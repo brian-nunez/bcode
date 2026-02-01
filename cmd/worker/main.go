@@ -205,7 +205,7 @@ INSTRUCTIONS:
 - CHECK "current_value" in AVAILABLE ELEMENTS. If a field is already filled, DO NOT fill it again.
 - You CAN perform multiple actions in one response (e.g., fill username, fill password, click submit).
 - Return a JSON ARRAY of commands.
-- If the goal is achieved (e.g., logged in), return [{"action": "finish", "result": "Done"}].
+- CRITICAL: If you see signs of success (e.g., "Welcome", "Log out" button, "Dashboard" text) or if the login form has disappeared, YOU MUST FINISH. Return [{"action": "finish", "result": "Logged in successfully"}].
 
 Response:`, userRequest, historyStr, elementList, pageText)
 
@@ -293,19 +293,37 @@ Response:`, userRequest, historyStr, elementList, pageText)
 					execErr = fmt.Errorf("unknown action: %s", cmd.Action)
 				}
 
-				if execErr != nil {
-					history = append(history, fmt.Sprintf("Failed to %s ID %d: %v", cmd.Action, cmd.ID, execErr))
-				} else {
-					history = append(history, fmt.Sprintf("Success: %s ID %d (%s)", cmd.Action, cmd.ID, selector))
-					// Small wait between batched actions to ensure stability
-					page.WaitForTimeout(500)
-				}
-			} // End of cmds loop
-
-			// Wait after the batch is done
-			page.WaitForTimeout(2000) 
-		} // End of maxIterations loop
-		
+							if execErr != nil {
+								history = append(history, fmt.Sprintf("Failed to %s ID %d: %v", cmd.Action, cmd.ID, execErr))
+							} else {
+								history = append(history, fmt.Sprintf("Success: %s ID %d (%s)", cmd.Action, cmd.ID, selector))
+								
+								// LIVE STREAMING: Take a screenshot immediately after the action
+								// This makes the UI feel responsive, like a video stream
+								if interimShot, err := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg, Quality: playwright.Int(50)}); err == nil {
+									interimBase64 := base64.StdEncoding.EncodeToString(interimShot)
+									updatePayload := map[string]string{"image": interimBase64}
+									if updateJSON, err := json.Marshal(updatePayload); err == nil {
+										fmt.Printf("\nJOB_UPDATE:%s\n", updateJSON)
+									}
+								}
+								
+								page.WaitForTimeout(1000) // Slight pause for visual clarity and page reaction
+							}
+						} // End of cmds loop
+				
+						// Check if we are done based on URL or content (Simple heuristic for login)
+						// This helps the AI stop if it misses the visual cue
+						if strings.Contains(strings.ToLower(page.URL()), "dashboard") || 
+						   strings.Contains(strings.ToLower(page.URL()), "success") {
+							   // We could force finish here, but better to let the AI decide in the next think step
+							   // just adding a history hint
+							   history = append(history, "System Note: URL contains 'dashboard' or 'success'. Task might be complete.")
+						}
+				
+						// Wait after the batch is done
+						page.WaitForTimeout(1000) 
+					} // End of maxIterations loop		
 		EndLoop:
 		if !result.Success {
 			finalScreenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
