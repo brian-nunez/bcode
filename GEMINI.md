@@ -1,85 +1,66 @@
-I hear you. I will strip out the "login" fixation and focus on the core architectural requirement: a generic system for **spawning a disposable browser and passing arbitrary execution requirements** to it.
-
-Here is the `GEMINI.md` file tailored for your `go-echo-templ-tailwind-template` repository.
-
----
-
 # GEMINI.md
 
 ## Project: The "Disposable Browser" Execution Engine
 
-**Goal:** Extend the `go-echo-templ-tailwind` template to act as an orchestrator that spawns ephemeral, isolated browser environments on demand.
+**Goal:** A high-performance, isolated system for spawning ephemeral browser environments to perform automated tasks (scraping, AI-driven visual analysis) with real-time feedback.
 
 ### 1. The Core Concept
 
-The application functions as a "Browser-as-a-Service" gateway.
+The application serves as a "Browser-as-a-Service" gateway.
 
-1. **Input:** The user (via UI or API) provides a "Job Specification" (URL + Parameters/Instructions).
-2. **Orchestration:** The Go/Echo backend uses the Docker SDK to spin up a fresh container.
-3. **Execution:** A specialized Go worker inside the container receives the specification, launches Playwright (connected via CDP), performs the task, and returns the result.
-4. **Disposal:** The container self-destructs immediately after task completion.
+1.  **Input:** User provides a Target URL, an Action, and an optional custom Prompt.
+2.  **Orchestration:** The Go/Echo backend spawns a fresh Docker container.
+3.  **Execution:** A specialized Go worker inside the container launches Playwright, performs the task (with optional Ollama/Gemma integration), and returns a structured result.
+4.  **Disposal:** The container self-destructs immediately after task completion (`AutoRemove: true`).
 
 ### 2. Architecture & Stack Integration
 
-This project modifies the standard `brian-nunez` template structure as follows:
+| Component | Technology | Location | Role |
+| :--- | :--- | :--- | :--- |
+| **Orchestrator** | Go + `moby/client` | `internal/orchestrator/` | Manages container lifecycle and log streaming. |
+| **The Worker** | Playwright-Go + Ollama | `cmd/worker/` | A standalone binary that drives the browser and calls AI APIs. |
+| **The Interface** | Templ + HTMX + JS | `views/execution/` | Interactive UI with dynamic form fields and real-time terminal. |
+| **AI Integration** | Ollama (Gemma 3:4b) | External (10.0.0.115) | Provides visual description of the page via screenshots. |
 
-| Component | Technology | Location in Repo | Role |
-| --- | --- | --- | --- |
-| **Orchestrator** | Go + `docker/client` | `internal/orchestrator/` | Manages container lifecycle (Start, Monitor, Kill). |
-| **The Worker** | Playwright-Go + CDP | `cmd/worker/` | A standalone binary baked into a Docker image. It accepts JSON args, drives the browser, and prints JSON output. |
-| **The Interface** | Templ + HTMX | `views/execution/` | A form to submit job specs and an SSE/Websocket stream to view live container logs. |
+### 3. Key Features
 
-### 3. Implementation Plan
+#### 🛡️ Secure Isolation
+Every execution happens in a fresh Debian-based container. If a site is malicious or the browser crashes, the host system remains untouched.
 
-#### Step 1: The Generic Worker (`cmd/worker/main.go`)
+#### 🤖 AI Visual Analysis ("Describe" Action)
+The system can take a high-quality JPEG screenshot of the loaded page and pass it to an Ollama instance (`gemma3:4b`). Users can provide custom instructions (e.g., *"Is this a checkout page?"*) which are processed by the vision model.
 
-Instead of hardcoded logic, this worker parses a JSON argument passed at runtime.
+#### ⚡ Optimized Performance
+*   **Layered Docker Caching:** Browser binaries (Chromium) are baked into the image in a cached layer, making worker startup near-instant.
+*   **Smart Installation:** The worker detects existing browser binaries at runtime to skip redundant installation/validation checks, resulting in clean, relevant logs.
 
-* **Input:** Receives a JSON string via environment variable `JOB_PAYLOAD`.
-* **Logic:**
-* Initializes Playwright.
-* Connects via CDP (for advanced network monitoring/stealth).
-* Executes generic actions based on the payload (e.g., `{ "action": "scrape", "target": "div.content" }` or `{ "action": "interact", "steps": [...] }`).
+#### 📺 Real-Time Streaming UI
+*   **Log Demultiplexing:** The orchestrator manually strips Docker's 8-byte binary headers from the stream to provide clean, readable logs.
+*   **Buffered Parsing:** Handles large base64-encoded image payloads (up to 5MB) without truncating the log stream.
+*   **Rich Results:** Automatically detects the final JSON output in the logs and renders it as a rich UI component (displaying the actual screenshot and AI response).
 
-
-* **Output:** Prints structured JSON to `stdout` (which the orchestrator captures).
-
-#### Step 2: The Orchestrator Service (`internal/orchestrator/docker.go`)
-
-This service wraps the `github.com/docker/docker/client`.
-
-* **Function `RunJob(payload JobRequest)`:**
-1. Configures a container using the `worker:latest` image.
-2. Injects the `payload` as an ENV variable.
-3. Attaches to the container's `stdout` stream to capture real-time logs.
-4. Starts the container with `AutoRemove: true`.
-
-
-
-#### Step 3: The UI Layer (`views/`)
-
-* **`execution.templ`:** A new page with a form accepting a Target URL and a JSON "Instruction" block.
-* **HTMX Integration:** The form posts to `/execute`. The server responds with a stream (SSE) that pipes the Docker container logs directly to the browser, giving you a "Matrix-style" live view of the execution.
-
-### 4. Data Flow (Sequence)
+### 4. Data Flow
 
 ```mermaid
 sequenceDiagram
-    User->>Echo Server: POST /api/execute (JSON Requirements)
-    Echo Server->>Docker Daemon: ContainerCreate(Image="worker", Env=Requirements)
-    Docker Daemon->>Container: Start
-    Container->>Playwright: Launch Browser (CDP)
-    Container->>Target Site: Execute Actions
-    Container-->>Docker Daemon: Stream Logs (Stdout)
-    Docker Daemon-->>Echo Server: Stream Logs
-    Echo Server-->>User: Live Updates (HTMX/SSE)
-    Container->>Docker Daemon: Exit (0)
-    Docker Daemon->>Container: Remove
-
+    User->>Echo Server: POST /execute (URL + Action + Prompt)
+    Echo Server->>Docker: Run Container (worker:latest)
+    Docker->>Worker: Launch Chromium
+    Worker->>Target Site: Navigate & Action
+    alt Action == "describe"
+        Worker->>Worker: Take Screenshot
+        Worker->>Ollama: POST /api/generate (Image + Prompt)
+        Ollama-->>Worker: JSON Description
+    end
+    Worker-->>Docker: Output JOB_RESULT:{"data": "...", "image": "..."}
+    Docker-->>Echo Server: Stream Raw Logs (with Headers)
+    Echo Server->>Echo Server: Strip Headers & Parse JSON
+    Echo Server-->>User: Append Logs & Render Result Component
 ```
 
-### 5. Why This Approach?
+### 5. Local Setup
 
-* **Isolation:** If the browser crashes or gets compromised by a malicious site, it’s contained in a throwaway Docker instance.
-* **Scalability:** You can spawn 1 or 100 browsers concurrently using standard Go routines.
-* **Flexibility:** The "Worker" logic is decoupled. You can swap the Go Playwright script for a Python script or a curl script without changing the Orchestrator code.
+1.  **Build Worker:** `docker build -t worker:latest -f cmd/worker/Dockerfile .`
+2.  **Start App:** `go run cmd/main.go`
+3.  **Configure AI:** Ensure Ollama is running at `10.0.0.115` with `gemma3:4b` available.
+4.  **Execute:** Navigate to `/execution` in your browser.
