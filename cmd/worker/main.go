@@ -36,6 +36,16 @@ func main() {
 		return
 	}
 
+	// Skip installation at runtime if browsers are already present
+	// This prevents the verbose "Downloading browsers..." logs and re-validation checks
+	// The Dockerfile already installed them to /ms-playwright
+	if _, err := os.Stat("/ms-playwright"); os.IsNotExist(err) {
+		err := playwright.Install()
+		if err != nil {
+			log.Fatalf("could not install playwright: %v", err)
+		}
+	}
+
 	payloadStr := os.Getenv("JOB_PAYLOAD")
 	if payloadStr == "" {
 		log.Fatal("JOB_PAYLOAD environment variable is required")
@@ -44,11 +54,6 @@ func main() {
 	var payload JobPayload
 	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
 		log.Fatalf("failed to unmarshal payload: %v", err)
-	}
-
-	err := playwright.Install()
-	if err != nil {
-		log.Fatalf("could not install playwright: %v", err)
 	}
 
 	pw, err := playwright.Run()
