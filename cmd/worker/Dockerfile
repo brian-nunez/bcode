@@ -41,6 +41,9 @@ RUN apt-get update && apt-get install -y \
     libxcursor1 \
     libxi6 \
     libxtst6 \
+    libgtk-3-0 \
+    libcairo-gobject2 \
+    libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

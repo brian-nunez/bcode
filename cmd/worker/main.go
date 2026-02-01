@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/playwright-community/playwright-go"
@@ -18,6 +22,7 @@ type JobPayload struct {
 type JobResult struct {
 	Success bool   `json:"success"`
 	Data    string `json:"data,omitempty"`
+	Image   string `json:"image,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
 
@@ -75,6 +80,62 @@ func main() {
 			} else {
 				result.Success = true
 				result.Data = content
+			}
+		}
+	case "describe":
+		if _, err = page.Goto(payload.URL); err != nil {
+			result.Error = fmt.Sprintf("could not goto: %v", err)
+		} else {
+			// Take a screenshot
+			screenshot, err := page.Screenshot(playwright.PageScreenshotOptions{
+				Type: playwright.ScreenshotTypeJpeg,
+			})
+			if err != nil {
+				result.Error = fmt.Sprintf("could not take screenshot: %v", err)
+				break
+			}
+
+			// Prepare request to Ollama
+			encodedImage := base64.StdEncoding.EncodeToString(screenshot)
+			
+			prompt := payload.Target
+			if prompt == "" {
+				prompt = "Provide a concise description of this webpage based on the image."
+			}
+
+			ollamaReq := map[string]interface{}{
+				"model":  "gemma3:4b",
+				"prompt": prompt,
+				"images": []string{encodedImage},
+				"stream": false,
+			}
+			reqBody, _ := json.Marshal(ollamaReq)
+
+			resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
+			if err != nil {
+				result.Error = fmt.Sprintf("could not contact ollama: %v", err)
+				break
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				result.Error = fmt.Sprintf("ollama returned status %d: %s", resp.StatusCode, string(body))
+				break
+			}
+
+			var ollamaResp map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+				result.Error = fmt.Sprintf("could not decode ollama response: %v", err)
+				break
+			}
+
+			if responseText, ok := ollamaResp["response"].(string); ok {
+				result.Success = true
+				result.Data = responseText
+				result.Image = encodedImage
+			} else {
+				result.Error = "ollama response missing 'response' field"
 			}
 		}
 	default:

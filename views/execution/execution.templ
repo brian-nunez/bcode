@@ -27,9 +27,15 @@ templ Execution() {
 						
 						<div>
 							<label class="block text-sm font-medium text-gray-700 mb-1">Action</label>
-							<select name="action" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+							<select id="action-select" name="action" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onchange="toggleInstruction()">
 								<option value="scrape">Scrape Content</option>
+								<option value="describe">Describe Page (Ollama)</option>
 							</select>
+						</div>
+
+						<div id="instruction-container" class="hidden">
+							<label class="block text-sm font-medium text-gray-700 mb-1">Instruction / Prompt (Optional)</label>
+							<textarea name="instruction" class="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. 'Summarize the main article' or 'Find the price'"></textarea>
 						</div>
 
 						@button.Button(button.Props{
@@ -42,13 +48,41 @@ templ Execution() {
 
 					<div class="mt-8">
 						<h2 class="text-lg font-semibold mb-2">Execution Logs</h2>
-						<div id="logs" class="bg-black text-green-400 p-4 rounded-md font-mono text-sm h-64 overflow-y-auto whitespace-pre-wrap">
+						<div id="logs" class="bg-black text-green-400 p-4 rounded-md font-mono text-sm h-96 overflow-y-auto whitespace-pre-wrap">
 							<!-- Logs will appear here -->
 						</div>
 					</div>
 				@card.Content() {}
 				}
 			</div>
+			<script>
+				function toggleInstruction() {
+					var action = document.getElementById('action-select').value;
+					var container = document.getElementById('instruction-container');
+					if (action === 'describe') {
+						container.classList.remove('hidden');
+					} else {
+						container.classList.add('hidden');
+					}
+				}
+			</script>
 		</body>
 	}
+}
+
+templ JobResultView(data string, image string) {
+	<div class="mt-4 p-4 bg-gray-900 rounded-md border border-gray-700">
+		if image != "" {
+			<div class="mb-4">
+				<h3 class="text-white font-bold mb-2">Screenshot</h3>
+				<img src={ "data:image/jpeg;base64," + image } class="max-w-full h-auto rounded border border-gray-600"/>
+			</div>
+		}
+		<div>
+			<h3 class="text-white font-bold mb-2">Result Data</h3>
+			<div class="p-2 bg-gray-800 rounded text-white overflow-x-auto">
+				{ data }
+			</div>
+		</div>
+	</div>
 }
