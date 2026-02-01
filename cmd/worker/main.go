@@ -100,13 +100,65 @@ func main() {
 				break
 			}
 
+			// Get Cleaned Text content (innerText) to remove HTML noise
+			// We use Evaluate to run JS in the browser context
+			cleanText, err := page.Evaluate(`() => {
+				// Clone the body to not affect the screenshot (though screenshot is already taken)
+				const clone = document.body.cloneNode(true);
+				
+				// Remove noise
+				const selectors = ['script', 'style', 'svg', 'noscript', 'iframe', 'link', 'meta'];
+				selectors.forEach(s => {
+					const elements = clone.querySelectorAll(s);
+					elements.forEach(e => e.remove());
+				});
+				
+				// Return plain text, collapsing whitespace
+				return clone.innerText.replace(/\s+/g, ' ').trim();
+			}`)
+			if err != nil {
+				result.Error = fmt.Sprintf("could not clean page content: %v", err)
+				break
+			}
+			
+			textStr, ok := cleanText.(string)
+			if !ok {
+				textStr = "Unable to retrieve text"
+			}
+
+			// Truncate text to prevent context overflow
+			// Text is much denser than HTML, so 15k chars of text is A LOT of content.
+			// 5000 chars is usually enough for the main content of a page.
+			if len(textStr) > 5000 {
+				textStr = textStr[:5000] + "...(truncated)"
+			}
+
 			// Prepare request to Ollama
 			encodedImage := base64.StdEncoding.EncodeToString(screenshot)
 			
-			prompt := payload.Target
-			if prompt == "" {
-				prompt = "Provide a concise description of this webpage based on the image."
+			userInstruction := payload.Target
+			if userInstruction == "" {
+				userInstruction = "Explain what this page is."
 			}
+
+			// SANDWICH STRATEGY: Instructions BEFORE and AFTER the context.
+			prompt := fmt.Sprintf(`*** SYSTEM INSTRUCTIONS ***
+You are a generic web analyst AI.
+1. MANDATORY: You must ALWAYS respond in ENGLISH.
+2. Ignore the language of the webpage content for your response language.
+3. Be concise and professional.
+4. Do NOT hallucinate HTML tags.
+
+*** WEBPAGE TEXT CONTENT ***
+%s
+
+*** USER REQUEST ***
+%s
+
+*** FINAL COMMAND ***
+Based on the image and text above, answer the user's request.
+Ensure your entire response is in English.
+Response:`, textStr, userInstruction)
 
 			ollamaReq := map[string]interface{}{
 				"model":  "gemma3:4b",
