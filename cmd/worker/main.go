@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -87,6 +89,180 @@ func main() {
 				result.Data = content
 			}
 		}
+	case "ai_action":
+		if _, err = page.Goto(payload.URL); err != nil {
+			result.Error = fmt.Sprintf("could not goto: %v", err)
+			break
+		}
+
+		// 1. Analyze Page (Get Clean Text)
+		cleanText, err := page.Evaluate(`() => {
+			const clone = document.body.cloneNode(true);
+			const selectors = ['script', 'style', 'svg', 'noscript', 'iframe', 'link', 'meta'];
+			selectors.forEach(s => {
+				const elements = clone.querySelectorAll(s);
+				elements.forEach(e => e.remove());
+			});
+			// Get inputs specifically to help the AI find selectors
+			const inputs = Array.from(document.querySelectorAll('input, button, select, textarea, a.btn')).map(el => {
+				let ident = el.tagName.toLowerCase();
+				if (el.id) ident += '#' + el.id;
+				if (el.name) ident += '[name="' + el.name + '"]';
+				if (el.innerText) ident += ' (text: "' + el.innerText.trim().slice(0, 20) + '")';
+				return ident;
+			}).join('\n');
+			
+			return clone.innerText.replace(/\s+/g, ' ').trim() + "\n\n*** DETECTED INTERACTIVE ELEMENTS ***\n" + inputs;
+		}`)
+		if err != nil {
+			result.Error = fmt.Sprintf("could not analyze page: %v", err)
+			break
+		}
+		
+		textStr, _ := cleanText.(string)
+		if len(textStr) > 8000 {
+			textStr = textStr[:8000] + "...(truncated)"
+		}
+
+		// 2. Take initial screenshot for context
+		screenshot, err := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
+		if err != nil {
+			result.Error = fmt.Sprintf("could not take screenshot: %v", err)
+			break
+		}
+		encodedImage := base64.StdEncoding.EncodeToString(screenshot)
+
+		userInstruction := payload.Target
+		if userInstruction == "" {
+			userInstruction = "Do something on this page."
+		}
+
+		// 3. Ask Ollama for a plan
+		// SANDWICH STRATEGY
+		prompt := fmt.Sprintf(`*** SYSTEM INSTRUCTIONS ***
+You are a Browser Automation Agent.
+Your goal is to convert the User Request into a sequence of JSON steps.
+
+OUTPUT FORMAT:
+Return ONLY a JSON array of objects. Do not write explanations.
+Supported Actions:
+1. {"type": "fill", "selector": "css_selector", "value": "text_to_type"}
+2. {"type": "click", "selector": "css_selector"}
+3. {"type": "press", "key": "Enter"}
+
+*** WEBPAGE CONTEXT ***
+%s
+
+*** USER REQUEST ***
+%s
+
+*** FINAL COMMAND ***
+Generate the JSON array of steps to fulfill the request.
+Use the "DETECTED INTERACTIVE ELEMENTS" list to pick the best selector (prefer ID or Name).
+Output JSON ONLY.
+Response:`, textStr, userInstruction)
+
+		ollamaReq := map[string]interface{}{
+			"model":  "gemma3:4b",
+			"prompt": prompt,
+			"images": []string{encodedImage},
+			"stream": false,
+		}
+		reqBody, _ := json.Marshal(ollamaReq)
+
+		resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
+		if err != nil {
+			result.Error = fmt.Sprintf("could not contact ollama: %v", err)
+			break
+		}
+		defer resp.Body.Close()
+
+		var ollamaResp map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&ollamaResp)
+		aiResponse, _ := ollamaResp["response"].(string)
+
+		// Log raw response for debugging (visible to user in stream)
+		fmt.Printf("\nAI RAW RESPONSE:\n%s\n", aiResponse)
+
+		// 4. Parse AI Response (JSON Extraction)
+		// Models often wrap JSON in markdown code blocks, so we extract it
+		jsonRegex := regexp.MustCompile(`(?s)\[.*\]`)
+		match := jsonRegex.FindString(aiResponse)
+		if match == "" {
+			// Fallback: try to find start and end brackets manually
+			start := strings.Index(aiResponse, "[")
+			end := strings.LastIndex(aiResponse, "]")
+			if start != -1 && end != -1 && end > start {
+				match = aiResponse[start : end+1]
+			}
+		}
+
+		if match == "" {
+			result.Error = "AI failed to generate valid JSON steps. See raw response in logs."
+			break
+		}
+
+		type ActionStep struct {
+			Type     string `json:"type"`
+			Selector string `json:"selector,omitempty"`
+			Value    string `json:"value,omitempty"`
+			Key      string `json:"key,omitempty"`
+		}
+		var steps []ActionStep
+		if err := json.Unmarshal([]byte(match), &steps); err != nil {
+			result.Error = fmt.Sprintf("failed to parse AI steps: %v", err)
+			break
+		}
+
+		// 5. Execute Steps
+		actionLog := []string{}
+		for i, step := range steps {
+			fmt.Printf("Executing Step %d: %v\n", i+1, step) // Log to stdout for the user to see
+			
+			switch step.Type {
+			case "fill":
+				// Attempt to wait for selector visibility
+				element, err := page.WaitForSelector(step.Selector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(2000)})
+				if err == nil && element != nil {
+					// Only try filling if found
+					if err := page.Fill(step.Selector, step.Value); err != nil {
+						actionLog = append(actionLog, fmt.Sprintf("❌ Fill %s failed: %v", step.Selector, err))
+					} else {
+						actionLog = append(actionLog, fmt.Sprintf("✅ Filled %s with '%s'", step.Selector, step.Value))
+					}
+				} else {
+					actionLog = append(actionLog, fmt.Sprintf("⚠️ Could not find selector: %s", step.Selector))
+				}
+			case "click":
+				page.WaitForSelector(step.Selector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(2000)})
+				if err := page.Click(step.Selector); err != nil {
+					actionLog = append(actionLog, fmt.Sprintf("❌ Click %s failed: %v", step.Selector, err))
+				} else {
+					actionLog = append(actionLog, fmt.Sprintf("✅ Clicked %s", step.Selector))
+				}
+			case "press":
+				// If key is missing, default to Enter? Or skip?
+				k := step.Key
+				if k == "" { k = "Enter" }
+				if err := page.Keyboard().Press(k); err != nil {
+					actionLog = append(actionLog, fmt.Sprintf("❌ Press %s failed: %v", k, err))
+				} else {
+					actionLog = append(actionLog, fmt.Sprintf("✅ Pressed %s", k))
+				}
+			}
+			// Small delay for stability
+			page.WaitForTimeout(500)
+		}
+
+		// 6. Capture Final State
+		// Wait a bit for navigation if it happened
+		page.WaitForTimeout(2000)
+		
+		finalScreenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
+		result.Image = base64.StdEncoding.EncodeToString(finalScreenshot)
+		result.Success = true
+		result.Data = fmt.Sprintf("Executed %d steps.\n\nLog:\n%s", len(steps), strings.Join(actionLog, "\n"))
+
 	case "describe":
 		if _, err = page.Goto(payload.URL); err != nil {
 			result.Error = fmt.Sprintf("could not goto: %v", err)

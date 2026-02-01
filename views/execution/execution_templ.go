@@ -77,7 +77,7 @@ func Execution() templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Action</label> <select id=\"action-select\" name=\"action\" class=\"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\" onchange=\"toggleInstruction()\"><option value=\"scrape\">Scrape Content</option> <option value=\"describe\">Describe Page (Ollama)</option></select></div><div id=\"instruction-container\" class=\"hidden\"><label class=\"block text-sm font-medium text-gray-700 mb-1\">Instruction / Prompt (Optional)</label> <textarea name=\"instruction\" class=\"flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50\" placeholder=\"e.g. 'Summarize the main article' or 'Find the price'\"></textarea></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Action</label> <select id=\"action-select\" name=\"action\" class=\"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\" onchange=\"toggleInstruction()\"><option value=\"scrape\">Scrape Content</option> <option value=\"describe\">Describe Page (Ollama)</option> <option value=\"ai_action\">AI Action (Ollama)</option></select></div><div id=\"instruction-container\" class=\"hidden\"><label class=\"block text-sm font-medium text-gray-700 mb-1\">Instruction / Prompt (Optional)</label> <textarea name=\"instruction\" class=\"flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50\" placeholder=\"e.g. 'Summarize the main article' or 'Find the price'\"></textarea></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -120,7 +120,7 @@ func Execution() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><script>\n\t\t\t\tfunction toggleInstruction() {\n\t\t\t\t\tvar action = document.getElementById('action-select').value;\n\t\t\t\t\tvar container = document.getElementById('instruction-container');\n\t\t\t\t\tif (action === 'describe') {\n\t\t\t\t\t\tcontainer.classList.remove('hidden');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tcontainer.classList.add('hidden');\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script></body>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><script>\n\t\t\t\tfunction toggleInstruction() {\n\t\t\t\t\tvar action = document.getElementById('action-select').value;\n\t\t\t\t\tvar container = document.getElementById('instruction-container');\n\t\t\t\t\tif (action === 'describe' || action === 'ai_action') {\n\t\t\t\t\t\tcontainer.classList.remove('hidden');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tcontainer.classList.add('hidden');\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script></body>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -167,7 +167,7 @@ func JobResultView(data string, image string) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs("data:image/jpeg;base64," + image)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 78, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 79, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -185,7 +185,7 @@ func JobResultView(data string, image string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(data)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 84, Col: 10}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 85, Col: 10}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {

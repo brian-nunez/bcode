@@ -30,6 +30,7 @@ templ Execution() {
 							<select id="action-select" name="action" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onchange="toggleInstruction()">
 								<option value="scrape">Scrape Content</option>
 								<option value="describe">Describe Page (Ollama)</option>
+								<option value="ai_action">AI Action (Ollama)</option>
 							</select>
 						</div>
 
@@ -59,7 +60,7 @@ templ Execution() {
 				function toggleInstruction() {
 					var action = document.getElementById('action-select').value;
 					var container = document.getElementById('instruction-container');
-					if (action === 'describe') {
+					if (action === 'describe' || action === 'ai_action') {
 						container.classList.remove('hidden');
 					} else {
 						container.classList.add('hidden');
