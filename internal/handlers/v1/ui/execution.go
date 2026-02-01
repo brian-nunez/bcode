@@ -2,12 +2,14 @@ package uihandlers
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"brian-nunez/bcode/internal/orchestrator"
 	"brian-nunez/bcode/views/execution"
@@ -78,20 +80,25 @@ func ExecuteJobHandler(c echo.Context) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 		
-		// Look for our specific prefix
-		const prefix = "JOB_RESULT:"
-		foundIdx := -1
-		
-		// Simple string search to handle Docker header noise
-		for i := 0; i <= len(line)-len(prefix); i++ {
-			if line[i:i+len(prefix)] == prefix {
-				foundIdx = i
-				break
+		// 1. Check for Live Updates (Screenshots)
+		const updatePrefix = "JOB_UPDATE:"
+		if idx := strings.Index(line, updatePrefix); idx != -1 {
+			jsonPart := line[idx+len(updatePrefix):]
+			var update struct {
+				Image string `json:"image"`
+			}
+			if err := json.Unmarshal([]byte(jsonPart), &update); err == nil && update.Image != "" {
+				// Protocol: IMG: <data>
+				fmt.Fprintf(c.Response().Writer, "IMG: %s\n", update.Image)
+				c.Response().Flush()
+				continue
 			}
 		}
 
-		if foundIdx != -1 {
-			jsonPart := line[foundIdx+len(prefix):]
+		// 2. Check for Final Result
+		const resultPrefix = "JOB_RESULT:"
+		if idx := strings.Index(line, resultPrefix); idx != -1 {
+			jsonPart := line[idx+len(resultPrefix):]
 			var attemptResult struct {
 				Success bool   `json:"success"`
 				Data    string `json:"data"`
@@ -100,22 +107,27 @@ func ExecuteJobHandler(c echo.Context) error {
 			}
 			
 			if err := json.Unmarshal([]byte(jsonPart), &attemptResult); err == nil {
-				execution.JobResultView(attemptResult.Data, attemptResult.Image).Render(context.Background(), c.Response().Writer)
+				// Render the result component to a buffer/string
+				resultBuf := bytes.NewBuffer(nil)
+				execution.JobResultView(attemptResult.Data, attemptResult.Image).Render(context.Background(), resultBuf)
+				
+				// Protocol: END: <html>
+				cleanHTML := strings.ReplaceAll(resultBuf.String(), "\n", " ")
+				fmt.Fprintf(c.Response().Writer, "END: %s\n", cleanHTML)
 				c.Response().Flush()
 				continue 
-			} else {
-				// Debug output if JSON parsing fails
-				fmt.Fprintf(c.Response().Writer, "<div class='text-xs text-red-500 font-mono'>Failed to parse result JSON: %v</div>", err)
 			}
 		}
 
 		// Otherwise just print the line as a log
-		fmt.Fprintf(c.Response().Writer, "<div class='text-xs text-gray-500 font-mono'>%s</div>", line)
+		// Protocol: LOG: <html>
+		fmt.Fprintf(c.Response().Writer, "LOG: <div class='text-xs text-gray-500 font-mono'>%s</div>\n", line)
 		c.Response().Flush()
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(c.Response().Writer, "<div class='text-red-500'>Error reading logs: %v</div>", err)
+		fmt.Fprintf(c.Response().Writer, "LOG: <div class='text-red-500'>Error reading logs: %v</div>\n", err)
+		c.Response().Flush()
 	}
 
 	return nil

@@ -170,6 +170,13 @@ func main() {
 			screenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
 			encodedImage := base64.StdEncoding.EncodeToString(screenshot)
 
+			// Emit Live View Update
+			updatePayload := map[string]string{
+				"image": encodedImage,
+			}
+			updateJSON, _ := json.Marshal(updatePayload)
+			fmt.Printf("\nJOB_UPDATE:%s\n", updateJSON)
+
 			// 3. Think (Prompt)
 			userRequest := payload.Target
 			if userRequest == "" { userRequest = "Interact with the page." }

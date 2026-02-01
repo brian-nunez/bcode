@@ -41,6 +41,13 @@ func RunJob(ctx context.Context, req JobRequest) (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	// Monitor context cancellation to kill container on client disconnect
+	go func() {
+		<-ctx.Done()
+		// Use a background context because the original 'ctx' is already dead
+		cli.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
+	}()
+
 	return cli.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,

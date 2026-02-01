@@ -64,11 +64,12 @@ func Execution() templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h1 class=\"text-2xl font-bold mb-6\">Disposable Browser Execution</h1><form hx-post=\"/execute\" hx-target=\"#logs\" hx-swap=\"beforeend\" class=\"space-y-4\"><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Target URL</label>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h1 class=\"text-2xl font-bold mb-6\">Disposable Browser Execution</h1><form onsubmit=\"runJob(event)\" class=\"space-y-4\"><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Target URL</label>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          "url",
 					Name:        "url",
 					Placeholder: "https://example.com",
 					Required:    true,
@@ -77,7 +78,7 @@ func Execution() templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Action</label> <select id=\"action-select\" name=\"action\" class=\"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\" onchange=\"toggleInstruction()\"><option value=\"scrape\">Scrape Content</option> <option value=\"describe\">Describe Page (Ollama)</option> <option value=\"ai_action\">AI Action (Ollama)</option></select></div><div id=\"instruction-container\" class=\"hidden\"><label class=\"block text-sm font-medium text-gray-700 mb-1\">Instruction / Prompt (Optional)</label> <textarea name=\"instruction\" class=\"flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50\" placeholder=\"e.g. 'Summarize the main article' or 'Find the price'\"></textarea></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><div><label class=\"block text-sm font-medium text-gray-700 mb-1\">Action</label> <select id=\"action-select\" name=\"action\" class=\"flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\" onchange=\"toggleInstruction()\"><option value=\"scrape\">Scrape Content</option> <option value=\"describe\">Describe Page (Ollama)</option> <option value=\"ai_action\">AI Action (Ollama)</option></select></div><div id=\"instruction-container\" class=\"hidden\"><label class=\"block text-sm font-medium text-gray-700 mb-1\">Instruction / Prompt (Optional)</label> <textarea id=\"instruction\" name=\"instruction\" class=\"flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50\" placeholder=\"e.g. 'Summarize the main article' or 'Find the price'\"></textarea></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -106,7 +107,7 @@ func Execution() templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</form><div class=\"mt-8\"><h2 class=\"text-lg font-semibold mb-2\">Execution Logs</h2><div id=\"logs\" class=\"bg-black text-green-400 p-4 rounded-md font-mono text-sm h-96 overflow-y-auto whitespace-pre-wrap\"><!-- Logs will appear here --></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</form><div class=\"mt-8\"><h2 class=\"text-lg font-semibold mb-2\">Live View</h2><div class=\"mb-4 p-2 bg-gray-100 rounded border border-gray-200 min-h-[200px] flex items-center justify-center\"><img id=\"live-monitor\" src=\"https://placehold.co/600x400?text=Waiting+for+Stream...\" class=\"max-w-full h-auto rounded shadow-sm transition-all duration-200\"></div><h2 class=\"text-lg font-semibold mb-2\">Execution Logs</h2><div id=\"logs\" class=\"bg-black text-green-400 p-4 rounded-md font-mono text-sm h-96 overflow-y-auto whitespace-pre-wrap\"><!-- Logs will appear here --></div><!-- Container for final result --><div id=\"final-result\"></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -120,7 +121,7 @@ func Execution() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><script>\n\t\t\t\tfunction toggleInstruction() {\n\t\t\t\t\tvar action = document.getElementById('action-select').value;\n\t\t\t\t\tvar container = document.getElementById('instruction-container');\n\t\t\t\t\tif (action === 'describe' || action === 'ai_action') {\n\t\t\t\t\t\tcontainer.classList.remove('hidden');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tcontainer.classList.add('hidden');\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script></body>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><script>\n\t\t\t\tfunction toggleInstruction() {\n\t\t\t\t\tvar action = document.getElementById('action-select').value;\n\t\t\t\t\tvar container = document.getElementById('instruction-container');\n\t\t\t\t\tif (action === 'describe' || action === 'ai_action') {\n\t\t\t\t\t\tcontainer.classList.remove('hidden');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tcontainer.classList.add('hidden');\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tasync function runJob(e) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tconst logsDiv = document.getElementById('logs');\n\t\t\t\t\tconst liveMonitor = document.getElementById('live-monitor');\n\t\t\t\t\tconst finalResult = document.getElementById('final-result');\n\t\t\t\t\t\n\t\t\t\t\tlogsDiv.innerHTML = '';\n\t\t\t\t\tfinalResult.innerHTML = '';\n\t\t\t\t\tliveMonitor.src = \"https://placehold.co/600x400?text=Connecting...\";\n\n\t\t\t\t\tconst formData = new FormData();\n\t\t\t\t\tformData.append('url', document.getElementById('url').value);\n\t\t\t\t\tformData.append('action', document.getElementById('action-select').value);\n\t\t\t\t\tformData.append('instruction', document.getElementById('instruction').value);\n\n\t\t\t\t\ttry {\n\t\t\t\t\t\tconst response = await fetch('/execute', {\n\t\t\t\t\t\t\tmethod: 'POST',\n\t\t\t\t\t\t\tbody: formData\n\t\t\t\t\t\t});\n\n\t\t\t\t\t\tconst reader = response.body.getReader();\n\t\t\t\t\t\tconst decoder = new TextDecoder();\n\t\t\t\t\t\tlet buffer = '';\n\n\t\t\t\t\t\twhile (true) {\n\t\t\t\t\t\t\tconst { done, value } = await reader.read();\n\t\t\t\t\t\t\tif (done) break;\n\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t// Append new chunk\n\t\t\t\t\t\t\tbuffer += decoder.decode(value, { stream: true });\n\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t// Process complete lines\n\t\t\t\t\t\t\tlet newlineIndex;\n\t\t\t\t\t\t\twhile ((newlineIndex = buffer.indexOf('\\n')) !== -1) {\n\t\t\t\t\t\t\t\tconst line = buffer.slice(0, newlineIndex);\n\t\t\t\t\t\t\t\tbuffer = buffer.slice(newlineIndex + 1);\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\tif (!line.trim()) continue;\n\n\t\t\t\t\t\t\t\tif (line.startsWith('LOG: ')) {\n\t\t\t\t\t\t\t\t\tconst content = line.substring(5);\n\t\t\t\t\t\t\t\t\tlogsDiv.insertAdjacentHTML('beforeend', content);\n\t\t\t\t\t\t\t\t\tlogsDiv.scrollTop = logsDiv.scrollHeight;\n\t\t\t\t\t\t\t\t} else if (line.startsWith('IMG: ')) {\n\t\t\t\t\t\t\t\t\tconst base64 = line.substring(5);\n\t\t\t\t\t\t\t\t\tliveMonitor.src = 'data:image/jpeg;base64,' + base64;\n\t\t\t\t\t\t\t\t} else if (line.startsWith('END: ')) {\n\t\t\t\t\t\t\t\t\tconst content = line.substring(5);\n\t\t\t\t\t\t\t\t\tfinalResult.innerHTML = content;\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t} catch (err) {\n\t\t\t\t\t\tlogsDiv.innerHTML += `<div class=\"text-red-500\">Error: ${err.message}</div>`;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script></body>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -167,7 +168,7 @@ func JobResultView(data string, image string) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs("data:image/jpeg;base64," + image)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 79, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 146, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -185,7 +186,7 @@ func JobResultView(data string, image string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(data)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 85, Col: 10}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/execution/execution.templ`, Line: 152, Col: 10}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {

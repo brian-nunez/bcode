@@ -14,10 +14,11 @@ templ Execution() {
 				@card.Card(card.Props{Class: "p-6"}) {
 					<h1 class="text-2xl font-bold mb-6">Disposable Browser Execution</h1>
 					
-					<form hx-post="/execute" hx-target="#logs" hx-swap="beforeend" class="space-y-4">
+					<form onsubmit="runJob(event)" class="space-y-4">
 						<div>
 							<label class="block text-sm font-medium text-gray-700 mb-1">Target URL</label>
 							@input.Input(input.Props{
+								ID:          "url",
 								Name:        "url",
 								Placeholder: "https://example.com",
 								Required:    true,
@@ -36,7 +37,7 @@ templ Execution() {
 
 						<div id="instruction-container" class="hidden">
 							<label class="block text-sm font-medium text-gray-700 mb-1">Instruction / Prompt (Optional)</label>
-							<textarea name="instruction" class="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. 'Summarize the main article' or 'Find the price'"></textarea>
+							<textarea id="instruction" name="instruction" class="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. 'Summarize the main article' or 'Find the price'"></textarea>
 						</div>
 
 						@button.Button(button.Props{
@@ -48,10 +49,18 @@ templ Execution() {
 					</form>
 
 					<div class="mt-8">
+						<h2 class="text-lg font-semibold mb-2">Live View</h2>
+						<div class="mb-4 p-2 bg-gray-100 rounded border border-gray-200 min-h-[200px] flex items-center justify-center">
+							<img id="live-monitor" src="https://placehold.co/600x400?text=Waiting+for+Stream..." class="max-w-full h-auto rounded shadow-sm transition-all duration-200" />
+						</div>
+
 						<h2 class="text-lg font-semibold mb-2">Execution Logs</h2>
 						<div id="logs" class="bg-black text-green-400 p-4 rounded-md font-mono text-sm h-96 overflow-y-auto whitespace-pre-wrap">
 							<!-- Logs will appear here -->
 						</div>
+						
+						<!-- Container for final result -->
+						<div id="final-result"></div>
 					</div>
 				@card.Content() {}
 				}
@@ -64,6 +73,64 @@ templ Execution() {
 						container.classList.remove('hidden');
 					} else {
 						container.classList.add('hidden');
+					}
+				}
+
+				async function runJob(e) {
+					e.preventDefault();
+					const logsDiv = document.getElementById('logs');
+					const liveMonitor = document.getElementById('live-monitor');
+					const finalResult = document.getElementById('final-result');
+					
+					logsDiv.innerHTML = '';
+					finalResult.innerHTML = '';
+					liveMonitor.src = "https://placehold.co/600x400?text=Connecting...";
+
+					const formData = new FormData();
+					formData.append('url', document.getElementById('url').value);
+					formData.append('action', document.getElementById('action-select').value);
+					formData.append('instruction', document.getElementById('instruction').value);
+
+					try {
+						const response = await fetch('/execute', {
+							method: 'POST',
+							body: formData
+						});
+
+						const reader = response.body.getReader();
+						const decoder = new TextDecoder();
+						let buffer = '';
+
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							
+							// Append new chunk
+							buffer += decoder.decode(value, { stream: true });
+							
+							// Process complete lines
+							let newlineIndex;
+							while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+								const line = buffer.slice(0, newlineIndex);
+								buffer = buffer.slice(newlineIndex + 1);
+								
+								if (!line.trim()) continue;
+
+								if (line.startsWith('LOG: ')) {
+									const content = line.substring(5);
+									logsDiv.insertAdjacentHTML('beforeend', content);
+									logsDiv.scrollTop = logsDiv.scrollHeight;
+								} else if (line.startsWith('IMG: ')) {
+									const base64 = line.substring(5);
+									liveMonitor.src = 'data:image/jpeg;base64,' + base64;
+								} else if (line.startsWith('END: ')) {
+									const content = line.substring(5);
+									finalResult.innerHTML = content;
+								}
+							}
+						}
+					} catch (err) {
+						logsDiv.innerHTML += `<div class="text-red-500">Error: ${err.message}</div>`;
 					}
 				}
 			</script>
