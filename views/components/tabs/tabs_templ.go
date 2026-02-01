@@ -11,8 +11,8 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"brian-nunez/bcode/views/utils"
 	"context"
-	"github.com/brian-nunez/go-echo-starter-template/views/utils"
 )
 
 type Props struct {

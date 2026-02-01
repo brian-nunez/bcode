@@ -11,9 +11,9 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
-	"github.com/brian-nunez/go-echo-starter-template/views/components/button"
-	"github.com/brian-nunez/go-echo-starter-template/views/components/icon"
-	"github.com/brian-nunez/go-echo-starter-template/views/utils"
+	"brian-nunez/bcode/views/components/button"
+	"brian-nunez/bcode/views/components/icon"
+	"brian-nunez/bcode/views/utils"
 )
 
 type Type string

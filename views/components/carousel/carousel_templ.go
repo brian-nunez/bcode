@@ -11,9 +11,9 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"brian-nunez/bcode/views/components/icon"
+	"brian-nunez/bcode/views/utils"
 	"fmt"
-	"github.com/brian-nunez/go-echo-starter-template/views/components/icon"
-	"github.com/brian-nunez/go-echo-starter-template/views/utils"
 	"strconv"
 )
 

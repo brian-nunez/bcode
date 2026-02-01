@@ -11,8 +11,8 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
-	"github.com/brian-nunez/go-echo-starter-template/views/components/label"
-	"github.com/brian-nunez/go-echo-starter-template/views/utils"
+	"brian-nunez/bcode/views/components/label"
+	"brian-nunez/bcode/views/utils"
 )
 
 type MessageVariant string
