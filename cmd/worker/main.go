@@ -267,6 +267,10 @@ Response:`, textStr, userInstruction)
 		if _, err = page.Goto(payload.URL); err != nil {
 			result.Error = fmt.Sprintf("could not goto: %v", err)
 		} else {
+			// Fix for white screenshots: Wait for the page to actually load
+			page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{State: playwright.LoadStateNetworkidle})
+			page.WaitForTimeout(2000)
+
 			// Take a screenshot
 			screenshot, err := page.Screenshot(playwright.PageScreenshotOptions{
 				Type: playwright.ScreenshotTypeJpeg,
