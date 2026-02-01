@@ -95,173 +95,217 @@ func main() {
 			break
 		}
 
-		// 1. Analyze Page (Get Clean Text)
-		cleanText, err := page.Evaluate(`() => {
-			const clone = document.body.cloneNode(true);
-			const selectors = ['script', 'style', 'svg', 'noscript', 'iframe', 'link', 'meta'];
-			selectors.forEach(s => {
-				const elements = clone.querySelectorAll(s);
-				elements.forEach(e => e.remove());
-			});
-			// Get inputs specifically to help the AI find selectors
-			const inputs = Array.from(document.querySelectorAll('input, button, select, textarea, a.btn')).map(el => {
-				let ident = el.tagName.toLowerCase();
-				if (el.id) ident += '#' + el.id;
-				if (el.name) ident += '[name="' + el.name + '"]';
-				if (el.innerText) ident += ' (text: "' + el.innerText.trim().slice(0, 20) + '")';
-				return ident;
-			}).join('\n');
-			
-			return clone.innerText.replace(/\s+/g, ' ').trim() + "\n\n*** DETECTED INTERACTIVE ELEMENTS ***\n" + inputs;
-		}`)
-		if err != nil {
-			result.Error = fmt.Sprintf("could not analyze page: %v", err)
-			break
-		}
-		
-		textStr, _ := cleanText.(string)
-		if len(textStr) > 8000 {
-			textStr = textStr[:8000] + "...(truncated)"
-		}
-
-		// 2. Take initial screenshot for context
-		screenshot, err := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
-		if err != nil {
-			result.Error = fmt.Sprintf("could not take screenshot: %v", err)
-			break
-		}
-		encodedImage := base64.StdEncoding.EncodeToString(screenshot)
-
-		userInstruction := payload.Target
-		if userInstruction == "" {
-			userInstruction = "Do something on this page."
-		}
-
-		// 3. Ask Ollama for a plan
-		// SANDWICH STRATEGY
-		prompt := fmt.Sprintf(`*** SYSTEM INSTRUCTIONS ***
-You are a Browser Automation Agent.
-Your goal is to convert the User Request into a sequence of JSON steps.
-
-OUTPUT FORMAT:
-Return ONLY a JSON array of objects. Do not write explanations.
-Supported Actions:
-1. {"type": "fill", "selector": "css_selector", "value": "text_to_type"}
-2. {"type": "click", "selector": "css_selector"}
-3. {"type": "press", "key": "Enter"}
-
-*** WEBPAGE CONTEXT ***
-%s
-
-*** USER REQUEST ***
-%s
-
-*** FINAL COMMAND ***
-Generate the JSON array of steps to fulfill the request.
-Use the "DETECTED INTERACTIVE ELEMENTS" list to pick the best selector (prefer ID or Name).
-Output JSON ONLY.
-Response:`, textStr, userInstruction)
-
-		ollamaReq := map[string]interface{}{
-			"model":  "gemma3:4b",
-			"prompt": prompt,
-			"images": []string{encodedImage},
-			"stream": false,
-		}
-		reqBody, _ := json.Marshal(ollamaReq)
-
-		resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
-		if err != nil {
-			result.Error = fmt.Sprintf("could not contact ollama: %v", err)
-			break
-		}
-		defer resp.Body.Close()
-
-		var ollamaResp map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&ollamaResp)
-		aiResponse, _ := ollamaResp["response"].(string)
-
-		// Log raw response for debugging (visible to user in stream)
-		fmt.Printf("\nAI RAW RESPONSE:\n%s\n", aiResponse)
-
-		// 4. Parse AI Response (JSON Extraction)
-		// Models often wrap JSON in markdown code blocks, so we extract it
-		jsonRegex := regexp.MustCompile(`(?s)\[.*\]`)
-		match := jsonRegex.FindString(aiResponse)
-		if match == "" {
-			// Fallback: try to find start and end brackets manually
-			start := strings.Index(aiResponse, "[")
-			end := strings.LastIndex(aiResponse, "]")
-			if start != -1 && end != -1 && end > start {
-				match = aiResponse[start : end+1]
-			}
-		}
-
-		if match == "" {
-			result.Error = "AI failed to generate valid JSON steps. See raw response in logs."
-			break
-		}
-
-		type ActionStep struct {
-			Type     string `json:"type"`
-			Selector string `json:"selector,omitempty"`
-			Value    string `json:"value,omitempty"`
-			Key      string `json:"key,omitempty"`
-		}
-		var steps []ActionStep
-		if err := json.Unmarshal([]byte(match), &steps); err != nil {
-			result.Error = fmt.Sprintf("failed to parse AI steps: %v", err)
-			break
-		}
-
-		// 5. Execute Steps
-		actionLog := []string{}
-		for i, step := range steps {
-			fmt.Printf("Executing Step %d: %v\n", i+1, step) // Log to stdout for the user to see
-			
-			switch step.Type {
-			case "fill":
-				// Attempt to wait for selector visibility
-				element, err := page.WaitForSelector(step.Selector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(2000)})
-				if err == nil && element != nil {
-					// Only try filling if found
-					if err := page.Fill(step.Selector, step.Value); err != nil {
-						actionLog = append(actionLog, fmt.Sprintf("❌ Fill %s failed: %v", step.Selector, err))
-					} else {
-						actionLog = append(actionLog, fmt.Sprintf("✅ Filled %s with '%s'", step.Selector, step.Value))
-					}
-				} else {
-					actionLog = append(actionLog, fmt.Sprintf("⚠️ Could not find selector: %s", step.Selector))
-				}
-			case "click":
-				page.WaitForSelector(step.Selector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(2000)})
-				if err := page.Click(step.Selector); err != nil {
-					actionLog = append(actionLog, fmt.Sprintf("❌ Click %s failed: %v", step.Selector, err))
-				} else {
-					actionLog = append(actionLog, fmt.Sprintf("✅ Clicked %s", step.Selector))
-				}
-			case "press":
-				// If key is missing, default to Enter? Or skip?
-				k := step.Key
-				if k == "" { k = "Enter" }
-				if err := page.Keyboard().Press(k); err != nil {
-					actionLog = append(actionLog, fmt.Sprintf("❌ Press %s failed: %v", k, err))
-				} else {
-					actionLog = append(actionLog, fmt.Sprintf("✅ Pressed %s", k))
-				}
-			}
-			// Small delay for stability
-			page.WaitForTimeout(500)
-		}
-
-		// 6. Capture Final State
-		// Wait a bit for navigation if it happened
+		// 1. Wait for load state to prevent white screenshots
+		page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{State: playwright.LoadStateNetworkidle})
 		page.WaitForTimeout(2000)
+
+		// Agent Configuration
+		const maxIterations = 5
+		fmt.Println("🤖 Starting AI Agent Loop (Max 5 steps)...")
+
+		history := []string{}
 		
-		finalScreenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
-		result.Image = base64.StdEncoding.EncodeToString(finalScreenshot)
-		result.Success = true
-		result.Data = fmt.Sprintf("Executed %d steps.\n\nLog:\n%s", len(steps), strings.Join(actionLog, "\n"))
+		for i := 1; i <= maxIterations; i++ {
+			fmt.Printf("\n--- Iteration %d/%d ---\n", i, maxIterations)
+
+			// 2. Observe (Index Elements)
+			pageAnalysis, err := page.Evaluate(`() => {
+				const map = {};
+				const items = [];
+				
+				function getSelector(el) {
+					if (el.id) return '#' + el.id;
+					if (el.name) return el.tagName.toLowerCase() + '[name="' + el.name + '"]';
+					if (el.className) {
+						const classes = el.className.split(/\s+/).filter(c => c.length > 0).join('.');
+						if (classes) return el.tagName.toLowerCase() + '.' + classes;
+					}
+					return el.tagName.toLowerCase(); 
+				}
+
+				const elements = Array.from(document.querySelectorAll('input, button, select, textarea, a.btn, [role="button"], a[href]'));
+				const visibleElements = elements.filter(el => {
+					return el.offsetWidth > 0 && el.offsetHeight > 0 && window.getComputedStyle(el).visibility !== 'hidden';
+				});
+
+				visibleElements.forEach((el, index) => {
+					const id = index + 1;
+					const selector = getSelector(el);
+					let desc = el.tagName.toLowerCase();
+					if (el.id) desc += ' id:"' + el.id + '"';
+					if (el.name) desc += ' name:"' + el.name + '"';
+					if (el.type) desc += ' [type="' + el.type + '"]';
+					if (el.innerText) desc += ' text:"' + el.innerText.trim().slice(0, 30) + '"';
+					if (el.placeholder) desc += ' placeholder:"' + el.placeholder + '"';
+					if (el.ariaLabel) desc += ' aria-label:"' + el.ariaLabel + '"';
+					
+					// Critical: Read current value so AI knows it's filled
+					if ((el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea') && el.value) {
+						desc += ' current_value:"' + el.value.slice(0, 50) + '"';
+					}
+					
+					map[id] = selector;
+					items.push(id + ": " + desc);
+				});
+
+				const clone = document.body.cloneNode(true);
+				['script', 'style', 'svg'].forEach(s => clone.querySelectorAll(s).forEach(e => e.remove()));
+				const text = clone.innerText.replace(/\s+/g, ' ').trim().slice(0, 3000); 
+
+				return { text, items: items.join('\n'), selectorMap: map };
+			}`)
+			
+			if err != nil {
+				result.Error = fmt.Sprintf("Analysis failed: %v", err)
+				break
+			}
+
+			data := pageAnalysis.(map[string]interface{})
+			pageText := data["text"].(string)
+			elementList := data["items"].(string)
+			selectorMapRaw := data["selectorMap"].(map[string]interface{})
+			
+			fmt.Printf("Available IDs: %v\n", selectorMapRaw)
+
+			screenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
+			encodedImage := base64.StdEncoding.EncodeToString(screenshot)
+
+			// 3. Think (Prompt)
+			userRequest := payload.Target
+			if userRequest == "" { userRequest = "Interact with the page." }
+
+			historyStr := strings.Join(history, "\n")
+			if len(history) > 0 { historyStr = "HISTORY:\n" + historyStr } else { historyStr = "No actions yet." }
+
+			prompt := fmt.Sprintf(`*** AGENT INSTRUCTIONS ***
+You are an autonomous browser agent.
+Goal: "%s"
+
+CURRENT STATE:
+%s
+
+AVAILABLE ELEMENTS (ID: Description):
+%s
+
+PAGE TEXT SUMMARY:
+%s
+
+RESPONSE FORMAT:
+Thought: <Reasoning about the page state and next step>
+JSON: [{"action": "fill", "id": 1, "value": "text"}, {"action": "click", "id": 2}]
+
+INSTRUCTIONS:
+- CHECK "current_value" in AVAILABLE ELEMENTS. If a field is already filled, DO NOT fill it again.
+- You CAN perform multiple actions in one response (e.g., fill username, fill password, click submit).
+- Return a JSON ARRAY of commands.
+- If the goal is achieved (e.g., logged in), return [{"action": "finish", "result": "Done"}].
+
+Response:`, userRequest, historyStr, elementList, pageText)
+
+			ollamaReq := map[string]interface{}{
+				"model":  "gemma3:4b",
+				"prompt": prompt,
+				"images": []string{encodedImage},
+				"stream": false,
+				"options": map[string]interface{}{ "temperature": 0.0 },
+			}
+			reqBody, _ := json.Marshal(ollamaReq)
+			
+			resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
+			if err != nil {
+				result.Error = fmt.Sprintf("Ollama Error: %v", err)
+				break
+			}
+			defer resp.Body.Close()
+
+			var ollamaResp map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&ollamaResp)
+			aiResponse := ollamaResp["response"].(string)
+			
+			fmt.Printf("AI: %s\n", aiResponse)
+
+			// 4. Parse Thought & JSON
+			jsonRegex := regexp.MustCompile(`(?s)(\[.*\]|\{.*\})`) // Match array OR object
+			match := jsonRegex.FindString(aiResponse)
+			
+			if match == "" {
+				history = append(history, "Error: No valid JSON found. Please output JSON.")
+				continue
+			}
+
+			type AgentCommand struct {
+				Action string `json:"action"`
+				ID     int    `json:"id"`
+				Value  string `json:"value"`
+				Key    string `json:"key"`
+				Result string `json:"result"`
+			}
+			var cmds []AgentCommand
+
+			// Try parsing as array first
+			if err := json.Unmarshal([]byte(match), &cmds); err != nil {
+				// If array fails, try parsing as single object
+				var singleCmd AgentCommand
+				if err2 := json.Unmarshal([]byte(match), &singleCmd); err2 == nil {
+					cmds = []AgentCommand{singleCmd}
+				} else {
+					history = append(history, "Error: Invalid JSON format. Return valid JSON.")
+					continue
+				}
+			}
+
+			// If we have commands, execute them
+			// Execute Commands
+			for _, cmd := range cmds {
+				if cmd.Action == "finish" {
+					result.Success = true
+					result.Data = fmt.Sprintf("Finished: %s\n\nHistory:\n%s", cmd.Result, strings.Join(history, "\n"))
+					result.Image = encodedImage
+					goto EndLoop
+				}
+
+				// Map ID
+				selectorInterface, exists := selectorMapRaw[fmt.Sprintf("%d", cmd.ID)]
+				if !exists && cmd.Action != "press" {
+					history = append(history, fmt.Sprintf("Error: ID %d not found.", cmd.ID))
+					continue
+				}
+				selector := ""
+				if exists { selector = selectorInterface.(string) }
+
+				// Execute
+				var execErr error
+				switch cmd.Action {
+				case "fill":
+					execErr = page.Fill(selector, cmd.Value)
+				case "click":
+					execErr = page.Click(selector)
+				case "press":
+					execErr = page.Keyboard().Press(cmd.Key)
+				default:
+					execErr = fmt.Errorf("unknown action: %s", cmd.Action)
+				}
+
+				if execErr != nil {
+					history = append(history, fmt.Sprintf("Failed to %s ID %d: %v", cmd.Action, cmd.ID, execErr))
+				} else {
+					history = append(history, fmt.Sprintf("Success: %s ID %d (%s)", cmd.Action, cmd.ID, selector))
+					// Small wait between batched actions to ensure stability
+					page.WaitForTimeout(500)
+				}
+			} // End of cmds loop
+
+			// Wait after the batch is done
+			page.WaitForTimeout(2000) 
+		} // End of maxIterations loop
+		
+		EndLoop:
+		if !result.Success {
+			finalScreenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
+			result.Image = base64.StdEncoding.EncodeToString(finalScreenshot)
+			result.Success = true
+			result.Data = fmt.Sprintf("Stopped after %d steps.\n\nHistory:\n%s", maxIterations, strings.Join(history, "\n"))
+		}
 
 	case "describe":
 		if _, err = page.Goto(payload.URL); err != nil {
