@@ -143,5 +143,5 @@ func main() {
 	}
 
 	output, _ := json.Marshal(result)
-	fmt.Println(string(output))
+	fmt.Printf("\nJOB_RESULT:%s\n", string(output))
 }

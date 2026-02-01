@@ -3,8 +3,10 @@ package uihandlers
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"brian-nunez/bcode/internal/orchestrator"
@@ -45,60 +47,69 @@ func ExecuteJobHandler(c echo.Context) error {
 	c.Response().WriteHeader(http.StatusOK)
 
 	// Stream logs line by line
-	scanner := bufio.NewScanner(logs)
+	pr, pw := io.Pipe()
 	
-	// Create a buffer for lines that might be split (Docker stream format can be tricky, but usually line-based)
-	// Actually, Docker raw stream includes headers. 'RunJob' uses stdcopy under the hood?
-	// orchestrator.RunJob returns 'cli.ContainerLogs', which returns 'io.ReadCloser'.
-	// If TTY is false (default), it includes headers. 
-	// We are just treating it as a raw stream for now. If it has headers, they will show up as garbage chars at start of line.
-	// We can strip them if needed, but for now let's just read lines.
+	// Start a goroutine to strip Docker headers and write clean logs to the pipe
+	go func() {
+		defer pw.Close()
+		header := make([]byte, 8)
+		for {
+			_, err := io.ReadFull(logs, header)
+			if err != nil {
+				return // EOF or error
+			}
+			
+			// Parse payload size (bytes 4-7, big endian)
+			size := binary.BigEndian.Uint32(header[4:8])
+			
+			// Copy the payload to the pipe
+			if _, err := io.CopyN(pw, logs, int64(size)); err != nil {
+				return
+			}
+		}
+	}()
+
+	scanner := bufio.NewScanner(pr)
+	// Increase buffer size to handle large base64 images (5MB)
+	const maxCapacity = 5 * 1024 * 1024
+	buf := make([]byte, maxCapacity)
+	scanner.Buffer(buf, maxCapacity)
 	
 	for scanner.Scan() {
 		line := scanner.Text()
 		
-		// Very basic cleanup of Docker log headers if present (usually 8 bytes)
-		// This is a naive heuristic; for production use 'stdcopy.StdCopy' to demultiplex
-		// cleanLine := line // Unused currently
+		// Look for our specific prefix
+		const prefix = "JOB_RESULT:"
+		foundIdx := -1
 		
-		// Try to find JSON start
-		// The worker prints the result as the last line, hopefully cleanly.
-		// We'll look for a line starting with '{' and containing "success":
-		
-		// Only try to parse as JSON if it looks like our result
-		// We know our result has "success" and "data" keys.
-
-		// We assume the JSON is at the end of the line or is the whole line
-		// Strip potential non-printable characters from start (Docker headers)
-		
-		// Also scan from the end just in case
-		foundJSON := false
-		for i := 0; i < len(line); i++ {
-			if line[i] == '{' {
-				// Create a new struct for each attempt to avoid stale data
-				var attemptResult struct {
-					Success bool   `json:"success"`
-					Data    string `json:"data"`
-					Image   string `json:"image"`
-					Error   string `json:"error"`
-				}
-				
-				if err := json.Unmarshal([]byte(line[i:]), &attemptResult); err == nil {
-					// It is our JSON!
-					execution.JobResultView(attemptResult.Data, attemptResult.Image).Render(context.Background(), c.Response().Writer)
-					c.Response().Flush()
-					foundJSON = true
-					break 
-				}
+		// Simple string search to handle Docker header noise
+		for i := 0; i <= len(line)-len(prefix); i++ {
+			if line[i:i+len(prefix)] == prefix {
+				foundIdx = i
+				break
 			}
 		}
-		
-		if foundJSON {
-			continue
+
+		if foundIdx != -1 {
+			jsonPart := line[foundIdx+len(prefix):]
+			var attemptResult struct {
+				Success bool   `json:"success"`
+				Data    string `json:"data"`
+				Image   string `json:"image"`
+				Error   string `json:"error"`
+			}
+			
+			if err := json.Unmarshal([]byte(jsonPart), &attemptResult); err == nil {
+				execution.JobResultView(attemptResult.Data, attemptResult.Image).Render(context.Background(), c.Response().Writer)
+				c.Response().Flush()
+				continue 
+			} else {
+				// Debug output if JSON parsing fails
+				fmt.Fprintf(c.Response().Writer, "<div class='text-xs text-red-500 font-mono'>Failed to parse result JSON: %v</div>", err)
+			}
 		}
 
 		// Otherwise just print the line as a log
-		// We use a small script to append safely or just raw HTML
 		fmt.Fprintf(c.Response().Writer, "<div class='text-xs text-gray-500 font-mono'>%s</div>", line)
 		c.Response().Flush()
 	}
