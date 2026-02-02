@@ -16,9 +16,19 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func ExecutionPageHandler(c echo.Context) error {
+func ScrapePageHandler(c echo.Context) error {
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	return execution.Execution().Render(context.Background(), c.Response().Writer)
+	return execution.ScrapePage().Render(context.Background(), c.Response().Writer)
+}
+
+func DescribePageHandler(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	return execution.DescribePage().Render(context.Background(), c.Response().Writer)
+}
+
+func AIActionsPageHandler(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	return execution.AIActionsPage().Render(context.Background(), c.Response().Writer)
 }
 
 func ExecuteJobHandler(c echo.Context) error {

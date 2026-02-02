@@ -7,7 +7,9 @@ import (
 
 func RegisterRoutes(e *echo.Echo) {
 	e.GET("/", uihandlers.HomeHandler)
-	e.GET("/execution", uihandlers.ExecutionPageHandler)
+	e.GET("/scrape", uihandlers.ScrapePageHandler)
+	e.GET("/describe", uihandlers.DescribePageHandler)
+	e.GET("/ai-actions", uihandlers.AIActionsPageHandler)
 	e.POST("/execute", uihandlers.ExecuteJobHandler)
 
 	v1Group := e.Group("/api/v1")

@@ -1,0 +1,59 @@
+package execution
+
+import (
+	"brian-nunez/bcode/views/pages"
+	"brian-nunez/bcode/views/components/input"
+	"brian-nunez/bcode/views/components/button"
+	"brian-nunez/bcode/views/components/card"
+	"brian-nunez/bcode/views/components/textarea"
+)
+
+templ DescribePage() {
+	@pages.Layout() {
+		<body class="bg-gray-50">
+			<div class="max-w-4xl mx-auto py-12 px-4">
+				@card.Card(card.Props{Class: "p-6"}) {
+					<div class="flex items-center gap-2 mb-6">
+						<div class="p-2 bg-purple-100 rounded-lg text-purple-600">
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+						</div>
+						<h1 class="text-2xl font-bold">AI Page Describer</h1>
+					</div>
+					
+					<form onsubmit="runJob(event)" class="space-y-4">
+						<input type="hidden" name="action" value="describe" />
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">Target URL</label>
+							@input.Input(input.Props{
+								ID:          "url",
+								Name:        "url",
+								Placeholder: "https://example.com",
+								Required:    true,
+								Type:        input.TypeURL,
+							})
+						</div>
+
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">What should the AI look for?</label>
+							@textarea.Textarea(textarea.Props{
+								ID:          "instruction",
+								Name:        "instruction",
+								Placeholder: "e.g. Summarize the main article, or find the pricing information.",
+							})
+						</div>
+						
+						@button.Button(button.Props{
+							Type: "submit",
+							Class: "w-full",
+						}) {
+							Analyze Page
+						}
+					</form>
+
+					@ExecutionMonitor()
+				}
+			</div>
+			@ExecutionScript()
+		</body>
+	}
+}

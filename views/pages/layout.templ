@@ -1,11 +1,19 @@
 package pages
 
+import "brian-nunez/bcode/views/components/navbar"
+
 templ Layout() {
 	<html lang="en">
 		<head>
 			<script src="/assets/js/lib/htmx.js"></script>
 			<link rel="stylesheet" href="/assets/css/output.css"/>
+			<title>B-Code | Browser Automation</title>
 		</head>
-		{ children... }
+		<div class="min-h-screen flex flex-col">
+			@navbar.Navbar()
+			<main class="flex-grow">
+				{ children... }
+			</main>
+		</div>
 	</html>
 }
