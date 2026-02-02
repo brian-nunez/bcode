@@ -50,7 +50,7 @@ func ExecuteJobHandler(c echo.Context) error {
 
 	// Stream logs line by line
 	pr, pw := io.Pipe()
-	
+
 	// Start a goroutine to strip Docker headers and write clean logs to the pipe
 	go func() {
 		defer pw.Close()
@@ -60,10 +60,10 @@ func ExecuteJobHandler(c echo.Context) error {
 			if err != nil {
 				return // EOF or error
 			}
-			
+
 			// Parse payload size (bytes 4-7, big endian)
 			size := binary.BigEndian.Uint32(header[4:8])
-			
+
 			// Copy the payload to the pipe
 			if _, err := io.CopyN(pw, logs, int64(size)); err != nil {
 				return
@@ -76,10 +76,10 @@ func ExecuteJobHandler(c echo.Context) error {
 	const maxCapacity = 5 * 1024 * 1024
 	buf := make([]byte, maxCapacity)
 	scanner.Buffer(buf, maxCapacity)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// 1. Check for Live Updates (Screenshots)
 		const updatePrefix = "JOB_UPDATE:"
 		if idx := strings.Index(line, updatePrefix); idx != -1 {
@@ -105,23 +105,23 @@ func ExecuteJobHandler(c echo.Context) error {
 				Image   string `json:"image"`
 				Error   string `json:"error"`
 			}
-			
+
 			if err := json.Unmarshal([]byte(jsonPart), &attemptResult); err == nil {
 				// Render the result component to a buffer/string
 				resultBuf := bytes.NewBuffer(nil)
 				execution.JobResultView(attemptResult.Data, attemptResult.Image).Render(context.Background(), resultBuf)
-				
+
 				// Protocol: END: <html>
 				cleanHTML := strings.ReplaceAll(resultBuf.String(), "\n", " ")
 				fmt.Fprintf(c.Response().Writer, "END: %s\n", cleanHTML)
 				c.Response().Flush()
-				continue 
+				continue
 			}
 		}
 
 		// Otherwise just print the line as a log
 		// Protocol: LOG: <html>
-		fmt.Fprintf(c.Response().Writer, "LOG: <div class='text-xs text-gray-500 font-mono'>%s</div>\n", line)
+		fmt.Fprintf(c.Response().Writer, "LOG: <div class='text-xs text-gray-400 font-mono'>%s</div>\n", line)
 		c.Response().Flush()
 	}
 

@@ -104,7 +104,7 @@ func main() {
 		fmt.Println("🤖 Starting AI Agent Loop (Max 5 steps)...")
 
 		history := []string{}
-		
+
 		for i := 1; i <= maxIterations; i++ {
 			fmt.Printf("\n--- Iteration %d/%d ---\n", i, maxIterations)
 
@@ -154,7 +154,7 @@ func main() {
 
 				return { text, items: items.join('\n'), selectorMap: map };
 			}`)
-			
+
 			if err != nil {
 				result.Error = fmt.Sprintf("Analysis failed: %v", err)
 				break
@@ -164,7 +164,7 @@ func main() {
 			pageText := data["text"].(string)
 			elementList := data["items"].(string)
 			selectorMapRaw := data["selectorMap"].(map[string]interface{})
-			
+
 			fmt.Printf("Available IDs: %v\n", selectorMapRaw)
 
 			screenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
@@ -179,10 +179,16 @@ func main() {
 
 			// 3. Think (Prompt)
 			userRequest := payload.Target
-			if userRequest == "" { userRequest = "Interact with the page." }
+			if userRequest == "" {
+				userRequest = "Interact with the page."
+			}
 
 			historyStr := strings.Join(history, "\n")
-			if len(history) > 0 { historyStr = "HISTORY:\n" + historyStr } else { historyStr = "No actions yet." }
+			if len(history) > 0 {
+				historyStr = "HISTORY:\n" + historyStr
+			} else {
+				historyStr = "No actions yet."
+			}
 
 			prompt := fmt.Sprintf(`*** AGENT INSTRUCTIONS ***
 You are an autonomous browser agent.
@@ -210,14 +216,14 @@ INSTRUCTIONS:
 Response:`, userRequest, historyStr, elementList, pageText)
 
 			ollamaReq := map[string]interface{}{
-				"model":  "gemma3:4b",
-				"prompt": prompt,
-				"images": []string{encodedImage},
-				"stream": false,
-				"options": map[string]interface{}{ "temperature": 0.0 },
+				"model":   "gemma3:4b",
+				"prompt":  prompt,
+				"images":  []string{encodedImage},
+				"stream":  false,
+				"options": map[string]interface{}{"temperature": 0.0},
 			}
 			reqBody, _ := json.Marshal(ollamaReq)
-			
+
 			resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
 			if err != nil {
 				result.Error = fmt.Sprintf("Ollama Error: %v", err)
@@ -228,13 +234,13 @@ Response:`, userRequest, historyStr, elementList, pageText)
 			var ollamaResp map[string]interface{}
 			json.NewDecoder(resp.Body).Decode(&ollamaResp)
 			aiResponse := ollamaResp["response"].(string)
-			
+
 			fmt.Printf("AI: %s\n", aiResponse)
 
 			// 4. Parse Thought & JSON
 			jsonRegex := regexp.MustCompile(`(?s)(\[.*\]|\{.*\})`) // Match array OR object
 			match := jsonRegex.FindString(aiResponse)
-			
+
 			if match == "" {
 				history = append(history, "Error: No valid JSON found. Please output JSON.")
 				continue
@@ -278,7 +284,9 @@ Response:`, userRequest, historyStr, elementList, pageText)
 					continue
 				}
 				selector := ""
-				if exists { selector = selectorInterface.(string) }
+				if exists {
+					selector = selectorInterface.(string)
+				}
 
 				// Execute
 				var execErr error
@@ -293,38 +301,38 @@ Response:`, userRequest, historyStr, elementList, pageText)
 					execErr = fmt.Errorf("unknown action: %s", cmd.Action)
 				}
 
-							if execErr != nil {
-								history = append(history, fmt.Sprintf("Failed to %s ID %d: %v", cmd.Action, cmd.ID, execErr))
-							} else {
-								history = append(history, fmt.Sprintf("Success: %s ID %d (%s)", cmd.Action, cmd.ID, selector))
-								
-								// LIVE STREAMING: Take a screenshot immediately after the action
-								// This makes the UI feel responsive, like a video stream
-								if interimShot, err := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg, Quality: playwright.Int(50)}); err == nil {
-									interimBase64 := base64.StdEncoding.EncodeToString(interimShot)
-									updatePayload := map[string]string{"image": interimBase64}
-									if updateJSON, err := json.Marshal(updatePayload); err == nil {
-										fmt.Printf("\nJOB_UPDATE:%s\n", updateJSON)
-									}
-								}
-								
-								page.WaitForTimeout(1000) // Slight pause for visual clarity and page reaction
-							}
-						} // End of cmds loop
-				
-						// Check if we are done based on URL or content (Simple heuristic for login)
-						// This helps the AI stop if it misses the visual cue
-						if strings.Contains(strings.ToLower(page.URL()), "dashboard") || 
-						   strings.Contains(strings.ToLower(page.URL()), "success") {
-							   // We could force finish here, but better to let the AI decide in the next think step
-							   // just adding a history hint
-							   history = append(history, "System Note: URL contains 'dashboard' or 'success'. Task might be complete.")
+				if execErr != nil {
+					history = append(history, fmt.Sprintf("Failed to %s ID %d: %v", cmd.Action, cmd.ID, execErr))
+				} else {
+					history = append(history, fmt.Sprintf("Success: %s ID %d (%s)", cmd.Action, cmd.ID, selector))
+
+					// LIVE STREAMING: Take a screenshot immediately after the action
+					// This makes the UI feel responsive, like a video stream
+					if interimShot, err := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg, Quality: playwright.Int(50)}); err == nil {
+						interimBase64 := base64.StdEncoding.EncodeToString(interimShot)
+						updatePayload := map[string]string{"image": interimBase64}
+						if updateJSON, err := json.Marshal(updatePayload); err == nil {
+							fmt.Printf("\nJOB_UPDATE:%s\n", updateJSON)
 						}
-				
-						// Wait after the batch is done
-						page.WaitForTimeout(1000) 
-					} // End of maxIterations loop		
-		EndLoop:
+					}
+
+					page.WaitForTimeout(1000) // Slight pause for visual clarity and page reaction
+				}
+			} // End of cmds loop
+
+			// Check if we are done based on URL or content (Simple heuristic for login)
+			// This helps the AI stop if it misses the visual cue
+			if strings.Contains(strings.ToLower(page.URL()), "dashboard") ||
+				strings.Contains(strings.ToLower(page.URL()), "success") {
+				// We could force finish here, but better to let the AI decide in the next think step
+				// just adding a history hint
+				history = append(history, "System Note: URL contains 'dashboard' or 'success'. Task might be complete.")
+			}
+
+			// Wait after the batch is done
+			page.WaitForTimeout(1000)
+		} // End of maxIterations loop
+	EndLoop:
 		if !result.Success {
 			finalScreenshot, _ := page.Screenshot(playwright.PageScreenshotOptions{Type: playwright.ScreenshotTypeJpeg})
 			result.Image = base64.StdEncoding.EncodeToString(finalScreenshot)
@@ -369,7 +377,7 @@ Response:`, userRequest, historyStr, elementList, pageText)
 				result.Error = fmt.Sprintf("could not clean page content: %v", err)
 				break
 			}
-			
+
 			textStr, ok := cleanText.(string)
 			if !ok {
 				textStr = "Unable to retrieve text"
@@ -384,7 +392,7 @@ Response:`, userRequest, historyStr, elementList, pageText)
 
 			// Prepare request to Ollama
 			encodedImage := base64.StdEncoding.EncodeToString(screenshot)
-			
+
 			userInstruction := payload.Target
 			if userInstruction == "" {
 				userInstruction = "Explain what this page is."

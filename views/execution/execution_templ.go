@@ -156,12 +156,12 @@ func JobResultView(data string, image string) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"mt-4 p-4 bg-gray-900 rounded-md border border-gray-700\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"mt-4 p-4 bg-zinc-900 rounded-md border border-zinc-800 shadow-lg\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if image != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"mb-4\"><h3 class=\"text-white font-bold mb-2\">Screenshot</h3><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"mb-4\"><h3 class=\"text-zinc-100 font-bold mb-2\">Screenshot</h3><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -174,12 +174,12 @@ func JobResultView(data string, image string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" class=\"max-w-full h-auto rounded border border-gray-600\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" class=\"max-w-full h-auto rounded border border-zinc-800 shadow-sm\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div><h3 class=\"text-white font-bold mb-2\">Result Data</h3><div class=\"p-2 bg-gray-800 rounded text-white overflow-x-auto\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div><h3 class=\"text-zinc-100 font-bold mb-2\">Result Data</h3><div class=\"p-4 bg-zinc-950 rounded text-zinc-100 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs border border-zinc-800\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
