@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"io"
+	"os"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
@@ -18,11 +19,25 @@ func RunJob(ctx context.Context, req JobRequest) (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	workerImage := os.Getenv("WORKER_IMAGE")
+	if workerImage == "" {
+		workerImage = "bbaas-worker:latest"
+	}
+
+	containerEnv := []string{
+		"JOB_PAYLOAD=" + req.Payload,
+	}
+
+	if ollamaModel := os.Getenv("OLLAMA_MODEL"); ollamaModel != "" {
+		containerEnv = append(containerEnv, "OLLAMA_MODEL="+ollamaModel)
+	}
+	if ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT"); ollamaEndpoint != "" {
+		containerEnv = append(containerEnv, "OLLAMA_ENDPOINT="+ollamaEndpoint)
+	}
+
 	config := &container.Config{
-		Image: "worker:latest",
-		Env: []string{
-			"JOB_PAYLOAD=" + req.Payload,
-		},
+		Image: workerImage,
+		Env:   containerEnv,
 	}
 
 	hostConfig := &container.HostConfig{

@@ -29,6 +29,16 @@ type JobResult struct {
 }
 
 func main() {
+	ollamaModel := os.Getenv("OLLAMA_MODEL")
+	if ollamaModel == "" {
+		ollamaModel = "change-me"
+	}
+
+	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
+	if ollamaEndpoint == "" {
+		ollamaEndpoint = "http://host.docker.internal:11434"
+	}
+
 	// Support for Docker build-time installation
 	if os.Getenv("INSTALL_ONLY") == "true" {
 		if err := playwright.Install(); err != nil {
@@ -216,7 +226,7 @@ INSTRUCTIONS:
 Response:`, userRequest, historyStr, elementList, pageText)
 
 			ollamaReq := map[string]interface{}{
-				"model":   "gemma3:4b",
+				"model":   ollamaModel,
 				"prompt":  prompt,
 				"images":  []string{encodedImage},
 				"stream":  false,
@@ -224,7 +234,7 @@ Response:`, userRequest, historyStr, elementList, pageText)
 			}
 			reqBody, _ := json.Marshal(ollamaReq)
 
-			resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
+			resp, err := http.Post(ollamaEndpoint+"/api/generate", "application/json", bytes.NewBuffer(reqBody))
 			if err != nil {
 				result.Error = fmt.Sprintf("Ollama Error: %v", err)
 				break
@@ -418,14 +428,14 @@ Ensure your entire response is in English.
 Response:`, textStr, userInstruction)
 
 			ollamaReq := map[string]interface{}{
-				"model":  "gemma3:4b",
+				"model":  ollamaModel,
 				"prompt": prompt,
 				"images": []string{encodedImage},
 				"stream": false,
 			}
 			reqBody, _ := json.Marshal(ollamaReq)
 
-			resp, err := http.Post("http://10.0.0.115:11434/api/generate", "application/json", bytes.NewBuffer(reqBody))
+			resp, err := http.Post(ollamaEndpoint+"/api/generate", "application/json", bytes.NewBuffer(reqBody))
 			if err != nil {
 				result.Error = fmt.Sprintf("could not contact ollama: %v", err)
 				break
